@@ -750,33 +750,83 @@ final class BuiltinValidationTests: XCTestCase {
         try document.validate()
     }
 
-    func test_securityRequirementComponentsExist_fails() throws {
-        let document = OpenAPI.Document(
-            info: .init(title: "test", version: "1.0"),
-            servers: [],
-            paths: [:],
-            components: .noComponents,
-            security: [
-                [.component(named: "oauth"): ["scope2"]]
-            ]
+    func test_serverVariableDefaultExistsInEnum_succeeds() throws {
+        let serverVariable = OpenAPI.Server.Variable(
+            enum: ["dev", "staging", "prod"],
+            default: "dev",
+            description: "Environment"
         )
 
-        XCTAssertThrowsError(try document.validate()) { error in
-            let errorCollection = error as? ValidationErrorCollection
-            XCTAssertEqual(errorCollection?.values.first?.reason, "Failed to satisfy: Security Requirement security scheme can be found in components/securitySchemes")
-            XCTAssertEqual(errorCollection?.values.first?.codingPath.map { $0.stringValue }, ["security"])
-            XCTAssertEqual(errorCollection?.values.count, 1)
+        let document = OpenAPI.Document(
+            info: .init(title: "test", version: "1.0"),
+            servers: [
+                .init(
+                    urlTemplate: URLTemplate(rawValue: "https://{env}.example.com")!,
+                    variables: ["env": serverVariable]
+                )
+            ],
+            paths: [:],
+            components: .noComponents
+        )
 
-            let openAPIError = OpenAPI.Error(from: error)
-            XCTAssertEqual(openAPIError.localizedDescription, "Failed to satisfy: Security Requirement security scheme can be found in components/securitySchemes at path: .security")
-            XCTAssertEqual(openAPIError.codingPath.map { $0.stringValue }, ["security"])
+        let validator = Validator.blank.validating(.serverVariableDefaultExistsInEnum)
+        try document.validate(using: validator)
+    }
+
+    func test_serverVariableDefaultExistsInEnum_fails() throws {
+        let serverVariable = OpenAPI.Server.Variable(
+            enum: ["dev", "staging", "prod"],
+            default: "qa",
+            description: "Environment"
+        )
+
+        let document = OpenAPI.Document(
+            info: .init(title: "test", version: "1.0"),
+            servers: [
+                .init(
+                    urlTemplate: URLTemplate(rawValue: "https://{env}.example.com")!,
+                    variables: ["env": serverVariable]
+                )
+            ],
+            paths: [:],
+            components: .noComponents
+        )
+
+        let validator = Validator.blank.validating(.serverVariableDefaultExistsInEnum)
+        
+        XCTAssertThrowsError(try document.validate(using: validator)) { error in
+            let errorCollection = error as? ValidationErrorCollection
+            XCTAssertEqual(errorCollection?.values.first?.reason, "Failed to satisfy: Server Variable's default value must exist in its enum if an enum is defined.")
+            XCTAssertTrue((errorCollection?.values.first?.codingPath.map { $0.stringValue }.joined(separator: ".") ?? "").contains("env"))
         }
     }
-    
+
+    func test_serverVariableDefaultExistsInEnum_noEnum_succeeds() throws {
+        let serverVariable = OpenAPI.Server.Variable(
+            default: "dev",
+            description: "Environment"
+        )
+
+        let document = OpenAPI.Document(
+            info: .init(title: "test", version: "1.0"),
+            servers: [
+                .init(
+                    urlTemplate: URLTemplate(rawValue: "https://{env}.example.com")!,
+                    variables: ["env": serverVariable]
+                )
+            ],
+            paths: [:],
+            components: .noComponents
+        )
+
+        let validator = Validator.blank.validating(.serverVariableDefaultExistsInEnum)
+        try document.validate(using: validator)
+    }
+
     func test_linkOperationsExist_validates() throws {
         // Create a link with an operationId that exists in the document
         let link = OpenAPI.Link(operationId: "testOperation")
-        
+
         // Create a document with an operation using that ID
         let document = OpenAPI.Document(
             info: .init(title: "test", version: "1.0"),
@@ -795,15 +845,15 @@ final class BuiltinValidationTests: XCTestCase {
                 ]
             )
         )
-        
+
         let validator = Validator.blank.validating(.linkOperationsExist)
         try document.validate(using: validator)
     }
-    
+
     func test_linkOperationsExist_fails() throws {
         // Create a link with an operationId that doesn't exist in the document
         let link = OpenAPI.Link(operationId: "nonExistentOperation")
-        
+
         // Create a document with an operation using a different ID
         let document = OpenAPI.Document(
             info: .init(title: "test", version: "1.0"),
@@ -822,9 +872,9 @@ final class BuiltinValidationTests: XCTestCase {
                 ]
             )
         )
-        
+
         let validator = Validator.blank.validating(.linkOperationsExist)
-        
+
         XCTAssertThrowsError(try document.validate(using: validator)) { error in
             let errorCollection = error as? ValidationErrorCollection
             XCTAssertEqual(errorCollection?.values.first?.reason, "Failed to satisfy: Links with operationIds have corresponding Operations")

@@ -1,6 +1,6 @@
 //
 //  Validation+Builtins.swift
-//  
+//
 //
 //  Created by Mathew Polzin on 6/3/20.
 //
@@ -412,14 +412,23 @@ extension Validation {
                     // don't make assertions about Links that don't have operationIds
                     return true
                 }
-                
-                // Collect all operation IDs from the document
-                let operationIds = context.document.paths.values
-                    .compactMap { context.document.components[$0] }
-                    .flatMap { $0.endpoints }
-                    .compactMap { $0.operation.operationId }
-                
-                return operationIds.contains(operationId)
+
+                return context.document.allOperationIds.contains(operationId)
+            }
+        )
+    }
+
+    /// Validate that a Server Variable's default value exists in its enum if an enum is defined.
+    ///
+    /// This validation is included by default.
+    public static var serverVariableDefaultExistsInEnum: Validation<OpenAPI.Server.Variable> {
+        .init(
+            description: "Server Variable's default value must exist in its enum if an enum is defined.",
+            check: { context in
+                if !context.subject.enum.isEmpty {
+                    return context.subject.enum.contains(context.subject.default)
+                }
+                return true
             }
         )
     }
